@@ -111,16 +111,12 @@ function assertRequiredArgumentsSet() {
         echo "One of SERVICE or TASK DEFINITON is required. You can pass the value using -n / --service-name for a service, or -d / --task-definition for a task"
         exit 5
     fi
-    if [ $SERVICE != false ] && [ $TASK_DEFINITION != false ]; then
-        echo "Only one of SERVICE or TASK DEFINITON may be specified, but you supplied both"
-        exit 6
-    fi
     if [ $SERVICE != false ] && [ $CLUSTER == false ]; then
         echo "CLUSTER is required. You can pass the value using -c or --cluster"
         exit 7
     fi
-    if [ $IMAGE == false ]; then
-        echo "IMAGE is required. You can pass the value using -i or --image"
+    if [ $IMAGE == false ] && [ $TASK_DEFINITION == false ]; then
+        echo "One of IMAGE or TASK DEFINITION is required. You can pass the value using -i or --image for a image, or -d / --task-definition for a task"
         exit 8
     fi
     if ! [[ $MAX_DEFINITIONS =~ ^-?[0-9]+$ ]]; then
@@ -243,6 +239,12 @@ function getCurrentTaskDefinition() {
       TASK_DEFINITION_ARN=`$AWS_ECS describe-services --services $SERVICE --cluster $CLUSTER | jq -r .services[0].taskDefinition`
       TASK_DEFINITION=`$AWS_ECS describe-task-definition --task-def $TASK_DEFINITION_ARN`
     fi
+}
+
+function getNewTaskDefinition() {
+    # Get new task definition name
+    NEW_DEF=`$AWS_ECS describe-task-definition --task-def $NEW_TASKDEF`
+    NEW_TASKDEF=$( echo "$NEW_DEF" | jq -r .taskDefinition.taskDefinitionArn)
 }
 
 function createNewTaskDefJson() {
@@ -511,20 +513,32 @@ if [ "$BASH_SOURCE" == "$0" ]; then
     # Check that required arguments are provided
     assertRequiredArgumentsSet
 
-    # Determine image name
-    parseImageName
-    echo "Using image name: $useImage"
+    if [ $SERVICE != false ] && [ $TASK_DEFINITION != false ]; then
+      NEW_TASKDEF="$TASK_DEFINITION"
 
-    # Get current task definition
-    getCurrentTaskDefinition
-    echo "Current task definition: $TASK_DEFINITION_ARN";
+      # Get current task definition
+      getCurrentTaskDefinition
+      echo "Current task definition: $TASK_DEFINITION_ARN";
 
-    # create new task definition json
-    createNewTaskDefJson
+      # Get new task definition
+      getNewTaskDefinition
+      echo "New task definition: $NEW_TASKDEF";
+    else
+      # Determine image name
+      parseImageName
+      echo "Using image name: $useImage"
 
-    # register new task definition
-    registerNewTaskDefinition
-    echo "New task definition: $NEW_TASKDEF";
+      # Get current task definition
+      getCurrentTaskDefinition
+      echo "Current task definition: $TASK_DEFINITION_ARN";
+
+      # create new task definition json
+      createNewTaskDefJson
+
+      # register new task definition
+      registerNewTaskDefinition
+      echo "New task definition: $NEW_TASKDEF";
+    fi
 
     # update service if needed
     if [ $SERVICE == false ]; then
